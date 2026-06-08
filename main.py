@@ -115,11 +115,6 @@ def show_list(message):
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith('remove_'))
 def callback_inline(call):
-    # Проверка доступа для callback-запросов
-    if call.from_user.id not in ALLOWED_USERS:
-        bot.answer_callback_query(call.id, "У вас нет доступа! 🔒", show_alert=True)
-        return
-
     index = int(call.data.split('_')[1])
     removed_item = storage.remove_item(index)
     
@@ -132,6 +127,9 @@ def callback_inline(call):
 if __name__ == '__main__':
     # Запуск Flask в отдельном потоке
     threading.Thread(target=run_flask).start()
+    
+    # Принудительно удаляем вебхук перед запуском polling
+    bot.remove_webhook()
     
     # Установка команд в меню Telegram
     bot.set_my_commands([
