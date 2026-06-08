@@ -25,7 +25,21 @@ API_TOKEN = os.getenv('API_TOKEN')
 bot = telebot.TeleBot(API_TOKEN)
 storage = ShoppingList()
 
+# Список разрешенных пользователей
+ALLOWED_USERS = [int(id.strip()) for id in os.getenv('ALLOWED_USERS', '').split(',') if id.strip()]
+
+def restricted(func):
+    def wrapper(message, *args, **kwargs):
+        user_id = message.from_user.id
+        if user_id not in ALLOWED_USERS:
+            print(f"Доступ запрещен для пользователя {user_id}")
+            bot.send_message(message.chat.id, "Извините, у вас нет доступа к этому боту. 🔒")
+            return
+        return func(message, *args, **kwargs)
+    return wrapper
+
 @bot.message_handler(commands=['start', 'help'])
+@restricted
 def send_welcome(message):
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     btn1 = types.KeyboardButton("📝 Показать список")
@@ -43,15 +57,18 @@ def send_welcome(message):
     )
 
 @bot.message_handler(commands=['list'])
+@restricted
 def handle_list_command(message):
     show_list(message)
 
 @bot.message_handler(commands=['clear'])
+@restricted
 def handle_clear_command(message):
     storage.clear_list()
     bot.send_message(message.chat.id, "Список полностью очищен! 🧹")
 
 @bot.message_handler(func=lambda message: True)
+@restricted
 def handle_message(message):
     if message.text == "📝 Показать список":
         show_list(message)
@@ -98,6 +115,11 @@ def show_list(message):
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith('remove_'))
 def callback_inline(call):
+    # Проверка доступа для callback-запросов
+    if call.from_user.id not in ALLOWED_USERS:
+        bot.answer_callback_query(call.id, "У вас нет доступа! 🔒", show_alert=True)
+        return
+
     index = int(call.data.split('_')[1])
     removed_item = storage.remove_item(index)
     
