@@ -74,12 +74,12 @@ def show_list(message):
     markup = types.InlineKeyboardMarkup()
     for index, item in enumerate(items):
         callback_button = types.InlineKeyboardButton(
-            text=f"🛒 {item} (удалить)", 
+            text=f"✅ {item}", 
             callback_data=f"remove_{index}"
         )
         markup.add(callback_button)
     
-    bot.send_message(message.chat.id, "Ваш список (нажми, чтобы вычеркнуть):", reply_markup=markup)
+    bot.send_message(message.chat.id, "Ваш список (нажми на ✅, чтобы вычеркнуть):", reply_markup=markup)
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith('remove_'))
 def callback_inline(call):
