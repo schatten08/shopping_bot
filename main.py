@@ -59,11 +59,26 @@ def handle_message(message):
         storage.clear_list()
         bot.send_message(message.chat.id, "Список полностью очищен! 🧹")
     else:
-        item = message.text.strip()
-        if storage.add_item(item):
-            bot.send_message(message.chat.id, f"✅ Добавлено: *{item}*", parse_mode="Markdown")
+        # Разбиваем сообщение по запятым и убираем лишние пробелы
+        items = [i.strip() for i in message.text.split(',') if i.strip()]
+        
+        if len(items) > 1:
+            added_count = 0
+            for item in items:
+                if storage.add_item(item):
+                    added_count += 1
+            
+            if added_count > 0:
+                bot.send_message(message.chat.id, f"✅ Добавлено несколько товаров ({added_count})!")
+            else:
+                bot.send_message(message.chat.id, "Все эти товары уже есть в списке!")
         else:
-            bot.send_message(message.chat.id, "Этот товар уже есть в списке!")
+            # Одиночный товар
+            item = items[0]
+            if storage.add_item(item):
+                bot.send_message(message.chat.id, f"✅ Добавлено: *{item}*", parse_mode="Markdown")
+            else:
+                bot.send_message(message.chat.id, "Этот товар уже есть в списке!")
 
 def show_list(message):
     items = storage.items
