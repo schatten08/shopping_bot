@@ -4,6 +4,7 @@ import threading
 from flask import Flask
 from telebot import types
 from storage import ShoppingList
+from categories import get_category
 from dotenv import load_dotenv
 
 # Загружаем переменные из .env
@@ -82,7 +83,8 @@ def handle_message(message):
         if len(items) > 1:
             added_count = 0
             for item in items:
-                if storage.add_item(item):
+                category = get_category(item)
+                if storage.add_item(item, category):
                     added_count += 1
             
             if added_count > 0:
@@ -92,8 +94,9 @@ def handle_message(message):
         else:
             # Одиночный товар
             item = items[0]
-            if storage.add_item(item):
-                bot.send_message(message.chat.id, f"✅ Добавлено: *{item}*", parse_mode="Markdown")
+            category = get_category(item)
+            if storage.add_item(item, category):
+                bot.send_message(message.chat.id, f"✅ Добавлено: *{item}* ({category})", parse_mode="Markdown")
             else:
                 bot.send_message(message.chat.id, "Этот товар уже есть в списке!")
 
@@ -104,14 +107,33 @@ def show_list(message):
         return
 
     markup = types.InlineKeyboardMarkup()
-    for index, item in enumerate(items):
+    
+    current_category = None
+    for index, item_data in enumerate(items):
+        item_name = item_data['name']
+        item_category = item_data['category']
+        
+        # Добавляем заголовок категории, если она изменилась
+        if item_category != current_category:
+            current_category = item_category
+            # Используем фиктивную кнопку как заголовок (не нажимается)
+            header_button = types.InlineKeyboardButton(
+                text=f"--- {current_category} ---", 
+                callback_data="ignore"
+            )
+            markup.add(header_button)
+            
         callback_button = types.InlineKeyboardButton(
-            text=f"✅ {item}", 
+            text=f"✅ {item_name}", 
             callback_data=f"remove_{index}"
         )
         markup.add(callback_button)
     
     bot.send_message(message.chat.id, "Ваш список (нажми на ✅, чтобы вычеркнуть):", reply_markup=markup)
+
+@bot.callback_query_handler(func=lambda call: call.data == 'ignore')
+def callback_ignore(call):
+    bot.answer_callback_query(call.id)
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith('remove_'))
 def callback_inline(call):

@@ -20,8 +20,19 @@ class ShoppingList:
             cur.execute("""
                 CREATE TABLE IF NOT EXISTS shopping_items (
                     id SERIAL PRIMARY KEY,
-                    name TEXT UNIQUE NOT NULL
+                    name TEXT UNIQUE NOT NULL,
+                    category TEXT DEFAULT '📦 Другое'
                 )
+            """)
+            # Добавляем колонку category, если её нет (для существующих БД)
+            cur.execute("""
+                DO $$
+                BEGIN
+                    IF NOT EXISTS (SELECT 1 FROM information_schema.columns 
+                                   WHERE table_name='shopping_items' AND column_name='category') THEN
+                        ALTER TABLE shopping_items ADD COLUMN category TEXT DEFAULT '📦 Другое';
+                    END IF;
+                END $$;
             """)
         conn.commit()
         conn.close()
@@ -32,11 +43,11 @@ class ShoppingList:
             return self._items_local
         
         conn = psycopg2.connect(self.db_url)
-        with conn.cursor() as cur:
-            cur.execute("SELECT name FROM shopping_items ORDER BY id")
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("SELECT id, name, category FROM shopping_items ORDER BY category, name")
             rows = cur.fetchall()
         conn.close()
-        return [row[0] for row in rows]
+        return rows
 
     @items.setter
     def items(self, value):
@@ -59,12 +70,15 @@ class ShoppingList:
         with open(self.file_path, 'w', encoding='utf-8') as f:
             json.dump(self._items_local, f, ensure_ascii=False, indent=4)
 
-    def add_item(self, item):
+    def add_item(self, item, category='📦 Другое'):
         if self.db_url:
             try:
                 conn = psycopg2.connect(self.db_url)
                 with conn.cursor() as cur:
-                    cur.execute("INSERT INTO shopping_items (name) VALUES (%s) ON CONFLICT DO NOTHING RETURNING id", (item,))
+                    cur.execute(
+                        "INSERT INTO shopping_items (name, category) VALUES (%s, %s) ON CONFLICT DO NOTHING RETURNING id", 
+                        (item, category)
+                    )
                     result = cur.fetchone()
                 conn.commit()
                 conn.close()
@@ -80,9 +94,9 @@ class ShoppingList:
             return False
 
     def remove_item(self, index):
-        items = self.items
+        items = self.items # На этом этапе items - это список словарей
         if 0 <= index < len(items):
-            item_name = items[index]
+            item_name = items[index]['name']
             if self.db_url:
                 conn = psycopg2.connect(self.db_url)
                 with conn.cursor() as cur:
