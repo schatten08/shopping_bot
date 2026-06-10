@@ -41,22 +41,20 @@ class ShoppingList:
                 DO $$
                 BEGIN
                     IF NOT EXISTS (SELECT 1 FROM information_schema.columns 
-                                   WHERE table_name='shopping_items' AND column_name='category') THEN
-                        ALTER TABLE shopping_items ADD COLUMN category TEXT DEFAULT '📦 Другое';
-                    END IF;
-                    
-                    IF NOT EXISTS (SELECT 1 FROM information_schema.columns 
                                    WHERE table_name='shopping_items' AND column_name='user_id') THEN
                         ALTER TABLE shopping_items ADD COLUMN user_id BIGINT DEFAULT 0;
-                        -- Убираем старое ограничение, если оно было
-                        ALTER TABLE shopping_items DROP CONSTRAINT IF EXISTS shopping_items_name_key;
-                        -- Добавляем новое составное ограничение
-                        ALTER TABLE shopping_items ADD CONSTRAINT shopping_items_user_name_key UNIQUE (user_id, name);
                     END IF;
+                    
+                    -- Принудительно обновляем уникальные ключи и структуру истории
+                    ALTER TABLE shopping_items DROP CONSTRAINT IF EXISTS shopping_items_name_key;
+                    ALTER TABLE shopping_items DROP CONSTRAINT IF EXISTS shopping_items_user_name_key;
+                    ALTER TABLE shopping_items ADD CONSTRAINT shopping_items_user_name_key UNIQUE (user_id, name);
 
                     IF NOT EXISTS (SELECT 1 FROM information_schema.columns 
                                    WHERE table_name='purchase_history' AND column_name='user_id') THEN
                         ALTER TABLE purchase_history ADD COLUMN user_id BIGINT DEFAULT 0;
+                        ALTER TABLE purchase_history DROP CONSTRAINT IF EXISTS purchase_history_pkey;
+                        ALTER TABLE purchase_history ADD PRIMARY KEY (user_id, name);
                     END IF;
                 END $$;
             """)

@@ -17,54 +17,43 @@ class AIProvider:
 
     def parse_items(self, text):
         if not self.client:
-            print("AI Provider: No API key configured.")
-            return []
+            return {"items": [], "recipe_advice": None}
 
         prompt = f"""
-        Ты — интеллектуальный ассистент по покупкам. 
-        Проанализируй запрос пользователя.
+        Ты — ассистент по покупкам. Твоя главная цель: превращать запросы в список продуктов.
         
-        ТВОИ ВОЗМОЖНОСТИ:
-        1. Распознавание рецептов: если просят "продукты на суп", предложи полный список необходимых ингредиентов. Ты ОБЯЗАН заполнить ими массив "items".
-        2. ГЛАВНОЕ ПРАВИЛО: Если в запросе есть намек на приготовление еды, поле "items" НЕ МОЖЕТ быть пустым. В "items" должны быть основные ингредиенты для этого блюда.
-        3. Категории: подбери подходящую категорию с иконкой.
+        ПРАВИЛА:
+        1. Если пользователь пишет категорию или блюдо (например: "продукты на оладьи"), ты ДОЛЖЕН найти базовый рецепт и добавить ВСЕ ингредиенты в список "items". 
+           Например, для оладий: ["Мука", "Кефир или Молоко", "Яйца", "Сахар", "Растительное масло"].
+        2. Если в запросе есть "добавь продукты на...", это команда ДОБАВИТЬ их в список, а не просто дать совет.
+        3. Поле "recipe_advice" используется ТОЛЬКО для краткого совета.
+        4. Поле "items" НИКОГДА не должно быть пустым, если в запросе упоминается еда.
 
-        СТРУКТУРА ОТВЕТА (JSON):
+        ОТВЕТЬ ТОЛЬКО В JSON:
         {{
             "items": [
-                {{"name": "Продукт", "category": "🍎 Категория"}}
+                {{"name": "Название", "category": "🛒 Категория"}}
             ],
-            "recipe_advice": "Вежливый совет и ссылка (https://www.google.com/search?q=рецепт+...)"
+            "recipe_advice": "Короткий совет и ссылка: https://www.google.com/search?q=рецепт+..."
         }}
 
-        Текст запроса: "{text}"
+        Запрос: "{text}"
         """
         
         try:
+            # Используем JSON Mode
             response = self.client.models.generate_content(
                 model=self.model_id,
                 contents=prompt,
-                config={'response_mime_type': 'application/json'}
+                config={
+                    'response_mime_type': 'application/json',
+                }
             )
             
-            text_response = response.text
-            data = json.loads(text_response.strip())
-            
-            # Если ИИ вернул пустой список предметов при наличии рецепта - это ошибка логики ИИ
-            # Исправляем это на лету, если возможно, или просто возвращаем данные
+            data = json.loads(response.text.strip())
             return data
         except Exception as e:
-            print(f"AI Error details: {e}")
-            # Пробуем без JSON-мода если не получилось
-            try:
-                response = self.client.models.generate_content(model=self.model_id, contents=prompt)
-                text_response = response.text
-                if "```json" in text_response:
-                    text_response = text_response.split("```json")[1].split("```")[0]
-                return json.loads(text_response.strip())
-            except:
-                return {"items": [], "recipe_advice": None}
-
-ai_provider = AIProvider()
+            print(f"AI Error: {e}")
+            return {"items": [], "recipe_advice": "Извините, произошла ошибка при разборе продуктов."}
 
 ai_provider = AIProvider()
