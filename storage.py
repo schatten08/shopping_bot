@@ -20,14 +20,24 @@ class ShoppingList:
             cur.execute("""
                 CREATE TABLE IF NOT EXISTS shopping_items (
                     id SERIAL PRIMARY KEY,
-                    name TEXT UNIQUE NOT NULL,
-                    category TEXT DEFAULT '📦 Другое'
+                    user_id BIGINT DEFAULT 0,
+                    name TEXT NOT NULL,
+                    category TEXT DEFAULT '📦 Другое',
+                    UNIQUE(user_id, name)
                 )
             """)
             # Таблица для истории (каталога)
             cur.execute("""
                 CREATE TABLE IF NOT EXISTS purchase_history (
-                    name TEXT PRIMARY KEY,
+                    user_id BIGINT DEFAULT 0,
+                    name TEXT NOT NULL,
+                    category TEXT,
+                    count INTEGER DEFAULT 1,
+                    PRIMARY KEY(user_id, name)
+                )
+            """)
+        conn.commit()
+        conn.close()
                     count INTEGER DEFAULT 1
                 )
             """)
@@ -44,35 +54,34 @@ class ShoppingList:
         conn.commit()
         conn.close()
 
-    def _update_history(self, item_name):
+    def _update_history(self, item_name, user_id=0):
         if not self.db_url: return
         conn = psycopg2.connect(self.db_url)
         with conn.cursor() as cur:
             cur.execute("""
-                INSERT INTO purchase_history (name, count) 
-                VALUES (%s, 1) 
-                ON CONFLICT (name) DO UPDATE SET count = purchase_history.count + 1
-            """, (item_name.strip(),))
+                INSERT INTO purchase_history (name, user_id, count) 
+                VALUES (%s, %s, 1) 
+                ON CONFLICT (name, user_id) DO UPDATE SET count = purchase_history.count + 1
+            """, (item_name.strip(), user_id))
         conn.commit()
         conn.close()
 
-    def get_frequent_items(self, limit=12):
+    def get_frequent_items(self, user_id=0, limit=12):
         if not self.db_url: return []
         conn = psycopg2.connect(self.db_url)
         with conn.cursor() as cur:
-            cur.execute("SELECT name FROM purchase_history ORDER BY count DESC LIMIT %s", (limit,))
+            cur.execute("SELECT name FROM purchase_history WHERE user_id = %s ORDER BY count DESC LIMIT %s", (user_id, limit))
             rows = cur.fetchall()
         conn.close()
         return [row[0] for row in rows]
 
-    @property
-    def items(self):
+    def get_items(self, user_id=0):
         if not self.db_url:
             return self._items_local
         
         conn = psycopg2.connect(self.db_url)
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
-            cur.execute("SELECT id, name, category FROM shopping_items ORDER BY category, name")
+            cur.execute("SELECT id, name, category FROM shopping_items WHERE user_id = %s ORDER BY category, name", (user_id,))
             rows = cur.fetchall()
         conn.close()
         return rows
@@ -98,17 +107,17 @@ class ShoppingList:
         with open(self.file_path, 'w', encoding='utf-8') as f:
             json.dump(self._items_local, f, ensure_ascii=False, indent=4)
 
-    def add_item(self, item, category='📦 Другое'):
+    def add_item(self, item, category='📦 Другое', user_id=0):
         if self.db_url:
             try:
                 # Обновляем историю при каждом добавлении
-                self._update_history(item)
+                self._update_history(item, user_id)
                 
                 conn = psycopg2.connect(self.db_url)
                 with conn.cursor() as cur:
                     cur.execute(
-                        "INSERT INTO shopping_items (name, category) VALUES (%s, %s) ON CONFLICT DO NOTHING RETURNING id", 
-                        (item, category)
+                        "INSERT INTO shopping_items (name, category, user_id) VALUES (%s, %s, %s) ON CONFLICT (name, user_id) DO NOTHING RETURNING id", 
+                        (item, category, user_id)
                     )
                     result = cur.fetchone()
                 conn.commit()
@@ -118,26 +127,39 @@ class ShoppingList:
                 print(f"DB Error: {e}")
                 return False
         else:
-            if item not in self.items:
-                self.items.append(item)
+            if item not in self._items_local:
+                self._items_local.append({"name": item, "category": category})
                 self.save_data_local()
                 return True
             return False
 
-    def remove_item(self, index):
-        items = self.items # На этом этапе items - это список словарей
+    def remove_item(self, index, user_id=0):
+        items = self.get_items(user_id) # На этом этапе items - это список словарей
         if 0 <= index < len(items):
             item_name = items[index]['name']
             if self.db_url:
                 conn = psycopg2.connect(self.db_url)
                 with conn.cursor() as cur:
-                    cur.execute("DELETE FROM shopping_items WHERE name = %s", (item_name,))
+                    cur.execute("DELETE FROM shopping_items WHERE name = %s AND user_id = %s", (item_name, user_id))
                 conn.commit()
                 conn.close()
                 return item_name
             else:
-                removed = self.items.pop(index)
+                removed = self._items_local.pop(index)
                 self.save_data_local()
+                return removed['name']
+        return None
+
+    def clear_list(self, user_id=0):
+        if self.db_url:
+            conn = psycopg2.connect(self.db_url)
+            with conn.cursor() as cur:
+                cur.execute("DELETE FROM shopping_items WHERE user_id = %s", (user_id,))
+            conn.commit()
+            conn.close()
+        else:
+            self._items_local = []
+            self.save_data_local()
                 return removed
         return None
 

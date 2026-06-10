@@ -117,7 +117,7 @@ def handle_voice(message):
             for item in items_data:
                 name = item.get('name', 'Неизвестно')
                 cat = item.get('category', '📦 Другое')
-                if storage.add_item(name, cat):
+                if storage.add_item(name, cat, message.from_user.id):
                     added_text.append(f"• {name} ({cat})")
             
             if added_text or recipe_advice:
@@ -150,10 +150,10 @@ def handle_message(message):
     if message.text == "📝 Показать список":
         show_list(message)
     elif message.text == "❌ Очистить всё":
-        storage.clear_list()
+        storage.clear_list(message.from_user.id)
         bot.send_message(message.chat.id, "Список полностью очищен! 🧹")
     elif message.text == "⭐ Частое":
-        frequent = storage.get_frequent_items()
+        frequent = storage.get_frequent_items(message.from_user.id)
         if not frequent:
             bot.send_message(message.chat.id, "Ваш каталог пока пуст. Добавьте что-нибудь!")
             return
@@ -180,7 +180,7 @@ def handle_message(message):
         for item in items_data:
             name = item.get('name', 'Неизвестно')
             cat = item.get('category', '📦 Другое')
-            if storage.add_item(name, cat):
+            if storage.add_item(name, cat, message.from_user.id):
                 added_text.append(f"• *{name}* ({cat})")
         
         if added_text or recipe_advice:
@@ -199,7 +199,7 @@ def handle_message(message):
             bot.send_message(message.chat.id, "Эти товары уже есть в списке или я не нашел продуктов в сообщении. 🤔")
 
 def show_list(message):
-    items = storage.items
+    items = storage.get_items(message.from_user.id)
     if not items:
         bot.send_message(message.chat.id, "Ваш список покупок пуст. 📭")
         return
@@ -238,11 +238,13 @@ def callback_ignore(call):
 def callback_inline(call):
     if call.data.startswith('remove_'):
         index = int(call.data.split('_')[1])
-        removed_item = storage.remove_item(index)
+        removed_item = storage.remove_item(index, call.from_user.id)
         
         if removed_item:
             bot.answer_callback_query(call.id, f"Куплено: {removed_item}")
             bot.delete_message(call.message.chat.id, call.message.message_id)
+            # Чтобы show_list сработал корректно, подменим отправителя
+            call.message.from_user = call.from_user
             show_list(call.message)
             
     elif call.data.startswith('add_'):
@@ -250,9 +252,20 @@ def callback_inline(call):
         # Для быстрых кнопок используем AI для определения категории
         items_data = ai_provider.parse_items(item)
         if items_data:
-            name = items_data[0].get('name', item)
-            cat = items_data[0].get('category', '📦 Другое')
-            if storage.add_item(name, cat):
+            # Обработка нового формата AI
+            if isinstance(items_data, dict):
+                actual_items = items_data.get('items', [])
+            else:
+                actual_items = items_data
+                
+            if actual_items:
+                name = actual_items[0].get('name', item)
+                cat = actual_items[0].get('category', '📦 Другое')
+                if storage.add_item(name, cat, call.from_user.id):
+                    bot.answer_callback_query(call.id, f"Добавлено: {name}")
+                    # Обновляем список, если он открыт
+                    call.message.from_user = call.from_user
+                    show_list(call.message)
                 bot.answer_callback_query(call.id, f"Добавлено: {name}")
                 bot.send_message(call.message.chat.id, f"✅ Добавлено: {name} ({cat})")
             else:
