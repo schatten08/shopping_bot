@@ -44,6 +44,20 @@ class ShoppingList:
                                    WHERE table_name='shopping_items' AND column_name='category') THEN
                         ALTER TABLE shopping_items ADD COLUMN category TEXT DEFAULT '📦 Другое';
                     END IF;
+                    
+                    IF NOT EXISTS (SELECT 1 FROM information_schema.columns 
+                                   WHERE table_name='shopping_items' AND column_name='user_id') THEN
+                        ALTER TABLE shopping_items ADD COLUMN user_id BIGINT DEFAULT 0;
+                        -- Убираем старое ограничение, если оно было
+                        ALTER TABLE shopping_items DROP CONSTRAINT IF EXISTS shopping_items_name_key;
+                        -- Добавляем новое составное ограничение
+                        ALTER TABLE shopping_items ADD CONSTRAINT shopping_items_user_name_key UNIQUE (user_id, name);
+                    END IF;
+
+                    IF NOT EXISTS (SELECT 1 FROM information_schema.columns 
+                                   WHERE table_name='purchase_history' AND column_name='user_id') THEN
+                        ALTER TABLE purchase_history ADD COLUMN user_id BIGINT DEFAULT 0;
+                    END IF;
                 END $$;
             """)
         conn.commit()
