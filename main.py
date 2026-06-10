@@ -79,8 +79,7 @@ def handle_clear_command(message):
 @restricted
 def handle_debug_logs(message):
     # Только для главного администратора (вас)
-    # Замените 7895389325 на ваш реальный ID, если он отличается
-    if message.from_user.id != 7895389325:
+    if message.from_user.id != 367218525:
         bot.send_message(message.chat.id, "У вас нет прав для просмотра системных логов. 🛡️")
         return
         
