@@ -53,7 +53,7 @@ class AIProvider:
             response = self.client.models.generate_content(
                 model=self.model_id,
                 contents=prompt,
-                config={{'response_mime_type': 'application/json'}}
+                config={'response_mime_type': 'application/json'}
             )
             
             print(f"DEBUG AI Response: {response.text}") # Видно в логах Render
