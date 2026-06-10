@@ -72,7 +72,7 @@ def handle_list_command(message):
 @bot.message_handler(commands=['clear'])
 @restricted
 def handle_clear_command(message):
-    storage.clear_list()
+    storage.clear_list(message.from_user.id)
     bot.send_message(message.chat.id, "Список полностью очищен! 🧹")
 
 @bot.message_handler(content_types=['voice'])
