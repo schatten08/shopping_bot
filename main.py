@@ -120,20 +120,16 @@ def handle_voice(message):
                 if storage.add_item(name, cat, message.from_user.id):
                     added_text.append(f"• {name} ({cat})")
             
-            if added_text or recipe_advice:
-                res_msg = ""
-                if added_text:
-                    res_msg += "✅ **Добавлено из голоса:**\n" + "\n".join(added_text)
-                
+            if added_text:
+                res_msg = "✅ **Добавлено из голоса:**\n" + "\n".join(added_text)
                 if recipe_advice:
-                    if res_msg: res_msg += "\n\n"
-                    res_msg += f"💡 {recipe_advice}"
+                    res_msg += f"\n\n💡 {recipe_advice}"
                 bot.send_message(message.chat.id, res_msg, parse_mode="Markdown")
-                
-                if added_text:
-                    show_list(message)
+                show_list(message)
+            elif recipe_advice:
+                bot.send_message(message.chat.id, f"💡 {recipe_advice}\n\n⚠️ Продукты не распознаны автоматически.", parse_mode="Markdown")
             else:
-                bot.send_message(message.chat.id, "Все эти товары уже есть в списке или я не нашел продуктов! 🤔")
+                bot.send_message(message.chat.id, "Голос распознан, но продуктов в нем не найдено. 🤔")
             
     except Exception as e:
         bot.send_message(message.chat.id, "❌ Не удалось распознать голос. Попробуйте четче или проверьте связь.")
@@ -184,25 +180,24 @@ def handle_message(message):
             if storage.add_item(name, cat, message.from_user.id):
                 added_text.append(f"• *{name}* ({cat})")
         
-        if added_text or recipe_advice:
-            res_msg = ""
-            if added_text:
-                res_msg += "✅ **Добавлено в список:**\n" + "\n".join(added_text)
-            else:
-                if not recipe_advice:
-                    res_msg = "🤔 Не удалось найти продукты в сообщении. Попробуйте написать иначе."
-            
+        # ЛОГИКА ОТВЕТА
+        if added_text:
+            res_msg = "✅ **Добавлено в список:**\n" + "\n".join(added_text)
             if recipe_advice:
-                if res_msg: res_msg += "\n\n"
-                res_msg += f"💡 {recipe_advice}"
-                
+                res_msg += f"\n\n💡 {recipe_advice}"
             bot.send_message(message.chat.id, res_msg, parse_mode="Markdown")
-            
-            # Если добавили продукты — показываем обновленный список
-            if added_text:
-                show_list(message)
+            show_list(message)
+        elif recipe_advice:
+            # Случай, когда ИИ дал совет, но не добавил продукты (или они уже были)
+            # Если список пуст, значит ИИ действительно проигнорировал продукты
+            items_in_db = storage.get_items(message.from_user.id)
+            if not items_in_db:
+                res_msg = f"💡 {recipe_advice}\n\n⚠️ **Внимание:** ИИ не добавил продукты в список. Попробуйте попросить иначе, например: 'Составь список продуктов для оладий'."
+            else:
+                res_msg = f"💡 {recipe_advice}\n\n(Все нужные продукты уже есть в вашем списке! ✅)"
+            bot.send_message(message.chat.id, res_msg, parse_mode="Markdown")
         else:
-            bot.send_message(message.chat.id, "Эти товары уже есть в вашем списке или я не нашел продуктов в сообщении. 🤔")
+            bot.send_message(message.chat.id, "Не нашел продуктов в сообщении. 🤔 Попробуйте написать по-другому.")
 
 def show_list(message):
     items = storage.get_items(message.from_user.id)
