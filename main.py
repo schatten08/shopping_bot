@@ -12,7 +12,11 @@ from dotenv import load_dotenv
 # Загружаем переменные из .env
 load_dotenv()
 
-# Инициализация Flask для Render (чтобы сервис не засыпал и проходил Health Check)
+# Настройка пути к ffmpeg для Render
+if os.path.exists("/opt/render/project/src/ffmpeg_bin/ffmpeg"):
+    AudioSegment.converter = "/opt/render/project/src/ffmpeg_bin/ffmpeg"
+
+# Инициализация Flask для Render
 app = Flask(__name__)
 
 @app.route('/')
