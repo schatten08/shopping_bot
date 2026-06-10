@@ -155,16 +155,3 @@ class ShoppingList:
         else:
             self._items_local = []
             self.save_data_local()
-                return removed
-        return None
-
-    def clear_list(self):
-        if self.db_url:
-            conn = psycopg2.connect(self.db_url)
-            with conn.cursor() as cur:
-                cur.execute("DELETE FROM shopping_items")
-            conn.commit()
-            conn.close()
-        else:
-            self.items = []
-            self.save_data_local()
