@@ -1,55 +1,68 @@
 import os
 import json
-import google.generativeai as genai
+from google import genai
+from dotenv import load_dotenv
+
+load_dotenv()
 
 class AIProvider:
     def __init__(self):
         self.api_key = os.getenv('GEMINI_API_KEY')
         if self.api_key:
-            genai.configure(api_key=self.api_key)
-            self.model = genai.GenerativeModel('gemini-1.5-flash')
+            # Используем новый SDK google-genai
+            self.client = genai.Client(api_key=self.api_key)
+            self.model_id = 'gemini-flash-latest'
         else:
-            self.model = None
+            self.client = None
 
     def parse_items(self, text):
-        if not self.model:
-            # Fallback if AI not configured
-            return [{"name": i.strip().capitalize(), "category": "📦 Другое"} for i in text.split(',') if i.strip()]
+        if not self.client:
+            print("AI Provider: No API key configured.")
+            return []
 
         prompt = f"""
         Ты — эксперт-помощник по покупкам. 
-        Твоя задача: проанализировать текст пользователя и составить список продуктов для добавления в корзину.
+        Проанализируй текст и составь список продуктов.
         
         ПРАВИЛА:
-        1. Если пользователь просит "продукты на борщ" или другое блюдо, добавь все основные ингредиенты для него.
-        2. Учитывай исключения (например, "кроме свеклы" — значит свеклу добавлять НЕЛЬЗЯ).
-        3. Исправляй опечатки и пиши названия с заглавной буквы.
-        4. Если в тексте нет названий продуктов, верни пустой список [].
-        5. Для каждого товара определи категорию с иконкой:
-           "🍎 Овощи и фрукты", "🥛 Молочное", "🥖 Бакалея", "🧼 Хозтовары", "🥩 Мясо и птица", "🐟 Рыба и морепродукты", "🧊 Заморозка", "📦 Другое".
-
-        Верни ответ ТОЛЬКО в формате JSON (без лишнего текста):
+        1. Если просят "продукты на борщ/салат" и т.д., добавь основные ингредиенты.
+        2. Учитывай исключения ("кроме Х").
+        3. Исправляй опечатки.
+        4. Обязательно определи категорию с иконкой.
+        
+        Верни ответ ТОЛЬКО в формате JSON:
         [
-            {{"name": "Картофель", "category": "🍎 Овощи и фрукты"}},
-            {{"name": "Говядина", "category": "🥩 Мясо и птица"}}
+            {{"name": "Товар", "category": "🍎 Категория"}}
         ]
 
-        Текст пользователя: "{text}"
+        Текст: "{text}"
         """
         
         try:
-            response = self.model.generate_content(prompt)
-            # Очистка ответа от возможных Markdown-тегов
+            response = self.client.models.generate_content(
+                model=self.model_id,
+                contents=prompt
+            )
+            
+            # Новый SDK возвращает ответ в response.text
             text_response = response.text
+            
+            # Очистка JSON от markdown
             if "```json" in text_response:
                 text_response = text_response.split("```json")[1].split("```")[0]
             elif "```" in text_response:
                 text_response = text_response.split("```")[1].split("```")[0]
             
-            return json.loads(text_response.strip())
+            items = json.loads(text_response.strip())
+            # Проверка, что это список и там есть продукты
+            if isinstance(items, list) and len(items) > 0:
+                return items
+            return []
+
         except Exception as e:
-            print(f"AI Error: {e}")
-            # Если AI упал, пробуем простое разделение по запятой только если там есть слова
-            return [{"name": i.strip().capitalize(), "category": "📦 Другое"} for i in text.split(',') if len(i.strip()) > 3]
+            print(f"AI Error details: {e}")
+            return []
+
+ai_provider = AIProvider()
 
 ai_provider = AIProvider()
