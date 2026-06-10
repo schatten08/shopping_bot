@@ -1,6 +1,8 @@
 import telebot
 import os
 import threading
+import speech_recognition as sr
+from pydub import AudioSegment
 from flask import Flask
 from telebot import types
 from storage import ShoppingList
@@ -44,17 +46,18 @@ def restricted(func):
 def send_welcome(message):
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     btn1 = types.KeyboardButton("📝 Показать список")
-    btn2 = types.KeyboardButton("❌ Очистить всё")
-    markup.add(btn1, btn2)
+    btn2 = types.KeyboardButton("⭐ Частое")
+    btn3 = types.KeyboardButton("❌ Очистить всё")
+    markup.add(btn1, btn2, btn3)
     
     bot.send_message(
         message.chat.id, 
         "Привет! Я твой список покупок. 🛒\n\n"
-        "• Просто напиши мне название товара, чтобы добавить его.\n"
-        "• Нажми на товар в списке, чтобы удалить его.\n"
-        "• Команда /list покажет ваш список.\n"
-        "• Команда /clear очистит всё.",
-        reply_markup=markup
+        "• Просто напиши товар или отправь **голосовое**, чтобы добавить его.\n"
+        "• Нажми «⭐ Частое», чтобы увидеть свои шаблоны.\n"
+        "• Нажми на товар в списке (✅), чтобы удалить его.",
+        reply_markup=markup,
+        parse_mode="Markdown"
     )
 
 @bot.message_handler(commands=['list'])
@@ -68,6 +71,52 @@ def handle_clear_command(message):
     storage.clear_list()
     bot.send_message(message.chat.id, "Список полностью очищен! 🧹")
 
+@bot.message_handler(content_types=['voice'])
+@restricted
+def handle_voice(message):
+    try:
+        msg = bot.send_message(message.chat.id, "🔊 Распознаю голос...")
+        
+        # Скачиваем файл
+        file_info = bot.get_file(message.voice.file_id)
+        downloaded_file = bot.download_file(file_info.file_path)
+        
+        with open("voice.ogg", "wb") as f:
+            f.write(downloaded_file)
+            
+        # Конвертируем ogg в wav (требуется ffmpeg)
+        # На Render нужно добавить ffmpeg в Build Step
+        audio = AudioSegment.from_file("voice.ogg", format="ogg")
+        audio.export("voice.wav", format="wav")
+        
+        # Распознаем
+        r = sr.Recognizer()
+        with sr.AudioFile("voice.wav") as source:
+            audio_data = r.record(source)
+            text = r.recognize_google(audio_data, language="ru-RU")
+            
+        bot.delete_message(message.chat.id, msg.message_id)
+        
+        # Обрабатываем текст как обычное сообщение
+        if text:
+            items = [i.strip() for i in text.split(',')]
+            for item in items:
+                category = get_category(item)
+                storage.add_item(item, category)
+            
+            bot.send_message(message.chat.id, f"✅ Добавлено из голоса: {text}")
+            show_list(message)
+            
+    except Exception as e:
+        bot.send_message(message.chat.id, "❌ Не удалось распознать голос. Попробуйте четче или проверьте связь.")
+        print(f"Voice error: {e}")
+    finally:
+        # Чистим временные файлы
+        for f in ["voice.ogg", "voice.wav"]:
+            if os.path.exists(f): 
+                try: os.remove(f)
+                except: pass
+
 @bot.message_handler(func=lambda message: True)
 @restricted
 def handle_message(message):
@@ -76,6 +125,16 @@ def handle_message(message):
     elif message.text == "❌ Очистить всё":
         storage.clear_list()
         bot.send_message(message.chat.id, "Список полностью очищен! 🧹")
+    elif message.text == "⭐ Частое":
+        frequent = storage.get_frequent_items()
+        if not frequent:
+            bot.send_message(message.chat.id, "Ваш каталог пока пуст. Добавьте что-нибудь!")
+            return
+            
+        markup = types.InlineKeyboardMarkup(row_width=2)
+        btns = [types.InlineKeyboardButton(item, callback_data=f"add_{item}") for item in frequent]
+        markup.add(*btns)
+        bot.send_message(message.chat.id, "Часто добавляемые товары:", reply_markup=markup)
     else:
         # Разбиваем сообщение по запятым и убираем лишние пробелы
         items = [i.strip() for i in message.text.split(',') if i.strip()]
@@ -135,16 +194,27 @@ def show_list(message):
 def callback_ignore(call):
     bot.answer_callback_query(call.id)
 
-@bot.callback_query_handler(func=lambda call: call.data.startswith('remove_'))
+@bot.callback_query_handler(func=lambda call: call.data.startswith('remove_') or call.data.startswith('add_'))
+@restricted
 def callback_inline(call):
-    index = int(call.data.split('_')[1])
-    removed_item = storage.remove_item(index)
-    
-    if removed_item:
-        bot.answer_callback_query(call.id, f"Куплено: {removed_item}")
-        # Удаляем старое сообщение и показываем обновленный список
-        bot.delete_message(call.message.chat.id, call.message.message_id)
-        show_list(call.message)
+    if call.data.startswith('remove_'):
+        index = int(call.data.split('_')[1])
+        removed_item = storage.remove_item(index)
+        
+        if removed_item:
+            bot.answer_callback_query(call.id, f"Куплено: {removed_item}")
+            bot.delete_message(call.message.chat.id, call.message.message_id)
+            show_list(call.message)
+            
+    elif call.data.startswith('add_'):
+        item = call.data.replace('add_', '')
+        category = get_category(item)
+        if storage.add_item(item, category):
+            bot.answer_callback_query(call.id, f"Добавлено: {item}")
+            # Не удаляем меню частого, просто даем фидбек
+            bot.send_message(call.message.chat.id, f"✅ Добавлено: {item}")
+        else:
+            bot.answer_callback_query(call.id, "Уже в списке!")
 
 if __name__ == '__main__':
     # Запуск Flask в отдельном потоке

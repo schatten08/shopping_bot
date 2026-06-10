@@ -24,6 +24,13 @@ class ShoppingList:
                     category TEXT DEFAULT '📦 Другое'
                 )
             """)
+            # Таблица для истории (каталога)
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS purchase_history (
+                    name TEXT PRIMARY KEY,
+                    count INTEGER DEFAULT 1
+                )
+            """)
             # Добавляем колонку category, если её нет (для существующих БД)
             cur.execute("""
                 DO $$
@@ -36,6 +43,27 @@ class ShoppingList:
             """)
         conn.commit()
         conn.close()
+
+    def _update_history(self, item_name):
+        if not self.db_url: return
+        conn = psycopg2.connect(self.db_url)
+        with conn.cursor() as cur:
+            cur.execute("""
+                INSERT INTO purchase_history (name, count) 
+                VALUES (%s, 1) 
+                ON CONFLICT (name) DO UPDATE SET count = purchase_history.count + 1
+            """, (item_name.strip(),))
+        conn.commit()
+        conn.close()
+
+    def get_frequent_items(self, limit=12):
+        if not self.db_url: return []
+        conn = psycopg2.connect(self.db_url)
+        with conn.cursor() as cur:
+            cur.execute("SELECT name FROM purchase_history ORDER BY count DESC LIMIT %s", (limit,))
+            rows = cur.fetchall()
+        conn.close()
+        return [row[0] for row in rows]
 
     @property
     def items(self):
@@ -73,6 +101,9 @@ class ShoppingList:
     def add_item(self, item, category='📦 Другое'):
         if self.db_url:
             try:
+                # Обновляем историю при каждом добавлении
+                self._update_history(item)
+                
                 conn = psycopg2.connect(self.db_url)
                 with conn.cursor() as cur:
                     cur.execute(
