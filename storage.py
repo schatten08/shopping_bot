@@ -81,11 +81,6 @@ class ShoppingList:
         conn.close()
         return rows
 
-    @items.setter
-    def items(self, value):
-        # Только для локального режима
-        self._items_local = value
-
     def _ensure_data_dir(self):
         os.makedirs(os.path.dirname(self.file_path), exist_ok=True)
 
