@@ -36,11 +36,6 @@ class ShoppingList:
                     PRIMARY KEY(user_id, name)
                 )
             """)
-        conn.commit()
-        conn.close()
-                    count INTEGER DEFAULT 1
-                )
-            """)
             # Добавляем колонку category, если её нет (для существующих БД)
             cur.execute("""
                 DO $$
@@ -48,6 +43,11 @@ class ShoppingList:
                     IF NOT EXISTS (SELECT 1 FROM information_schema.columns 
                                    WHERE table_name='shopping_items' AND column_name='category') THEN
                         ALTER TABLE shopping_items ADD COLUMN category TEXT DEFAULT '📦 Другое';
+                    END IF;
+                END $$;
+            """)
+        conn.commit()
+        conn.close()
                     END IF;
                 END $$;
             """)
