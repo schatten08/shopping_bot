@@ -75,6 +75,25 @@ def handle_clear_command(message):
     storage.clear_list(message.from_user.id)
     bot.send_message(message.chat.id, "Список полностью очищен! 🧹")
 
+@bot.message_handler(commands=['debug_logs'])
+@restricted
+def handle_debug_logs(message):
+    # Только для главного администратора (вас)
+    # Замените 7895389325 на ваш реальный ID, если он отличается
+    if message.from_user.id != 7895389325:
+        bot.send_message(message.chat.id, "У вас нет прав для просмотра системных логов. 🛡️")
+        return
+        
+    frequent = storage.get_frequent_items(message.from_user.id, limit=20)
+    items = storage.get_items(message.from_user.id)
+    
+    log_msg = f"🔍 **Системная сводка:**\n\n"
+    log_msg += f"👤 Ваш ID: `{message.from_user.id}`\n"
+    log_msg += f"📦 Товаров в списке: {len(items)}\n"
+    log_msg += f"⭐ Всего в истории (топ): {', '.join(frequent) if frequent else 'пусто'}\n"
+    
+    bot.send_message(message.chat.id, log_msg, parse_mode="Markdown")
+
 @bot.message_handler(content_types=['voice'])
 @restricted
 def handle_voice(message):
