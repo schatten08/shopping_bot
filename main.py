@@ -120,10 +120,14 @@ def handle_voice(message):
                 if storage.add_item(name, cat):
                     added_text.append(f"• {name} ({cat})")
             
-            if added_text:
-                res_msg = "✅ Добавлено из голоса:\n" + "\n".join(added_text)
+            if added_text or recipe_advice:
+                res_msg = ""
+                if added_text:
+                    res_msg += "✅ Добавлено из голоса:\n" + "\n".join(added_text)
+                
                 if recipe_advice:
-                    res_msg += f"\n\n💡 {recipe_advice}"
+                    if res_msg: res_msg += "\n\n"
+                    res_msg += f"💡 {recipe_advice}"
                 bot.send_message(message.chat.id, res_msg)
             else:
                 bot.send_message(message.chat.id, "Все эти товары уже есть в списке!")
@@ -179,12 +183,18 @@ def handle_message(message):
             if storage.add_item(name, cat):
                 added_text.append(f"• *{name}* ({cat})")
         
-        if added_text:
-            res_msg = "✅ Добавлено:\n" + "\n".join(added_text)
+        if added_text or recipe_advice:
+            res_msg = ""
+            if added_text:
+                res_msg += "✅ Добавлено:\n" + "\n".join(added_text)
+            
             if recipe_advice:
-                res_msg += f"\n\n💡 {recipe_advice}"
+                if res_msg: res_msg += "\n\n"
+                res_msg += f"💡 {recipe_advice}"
+                
             bot.send_message(message.chat.id, res_msg, parse_mode="Markdown")
-            show_list(message)
+            if added_text:
+                show_list(message)
         else:
             bot.send_message(message.chat.id, "Эти товары уже есть в списке или я не нашел продуктов в сообщении. 🤔")
 
