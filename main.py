@@ -123,16 +123,17 @@ def handle_voice(message):
             if added_text or recipe_advice:
                 res_msg = ""
                 if added_text:
-                    res_msg += "✅ Добавлено из голоса:\n" + "\n".join(added_text)
+                    res_msg += "✅ **Добавлено из голоса:**\n" + "\n".join(added_text)
                 
                 if recipe_advice:
                     if res_msg: res_msg += "\n\n"
                     res_msg += f"💡 {recipe_advice}"
-                bot.send_message(message.chat.id, res_msg)
+                bot.send_message(message.chat.id, res_msg, parse_mode="Markdown")
+                
+                if added_text:
+                    show_list(message)
             else:
-                bot.send_message(message.chat.id, "Все эти товары уже есть в списке!")
-            
-            show_list(message)
+                bot.send_message(message.chat.id, "Все эти товары уже есть в списке или я не нашел продуктов! 🤔")
             
     except Exception as e:
         bot.send_message(message.chat.id, "❌ Не удалось распознать голос. Попробуйте четче или проверьте связь.")
@@ -186,17 +187,22 @@ def handle_message(message):
         if added_text or recipe_advice:
             res_msg = ""
             if added_text:
-                res_msg += "✅ Добавлено:\n" + "\n".join(added_text)
+                res_msg += "✅ **Добавлено в список:**\n" + "\n".join(added_text)
+            else:
+                if not recipe_advice:
+                    res_msg = "🤔 Не удалось найти продукты в сообщении. Попробуйте написать иначе."
             
             if recipe_advice:
                 if res_msg: res_msg += "\n\n"
                 res_msg += f"💡 {recipe_advice}"
                 
             bot.send_message(message.chat.id, res_msg, parse_mode="Markdown")
+            
+            # Если добавили продукты — показываем обновленный список
             if added_text:
                 show_list(message)
         else:
-            bot.send_message(message.chat.id, "Эти товары уже есть в списке или я не нашел продуктов в сообщении. 🤔")
+            bot.send_message(message.chat.id, "Эти товары уже есть в вашем списке или я не нашел продуктов в сообщении. 🤔")
 
 def show_list(message):
     items = storage.get_items(message.from_user.id)
