@@ -48,11 +48,6 @@ class ShoppingList:
             """)
         conn.commit()
         conn.close()
-                    END IF;
-                END $$;
-            """)
-        conn.commit()
-        conn.close()
 
     def _update_history(self, item_name, user_id=0):
         if not self.db_url: return
