@@ -4,3 +4,4 @@ psycopg2-binary
 flask
 SpeechRecognition
 pydub
+google-generativeai

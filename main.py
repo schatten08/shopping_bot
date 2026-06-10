@@ -6,7 +6,7 @@ from pydub import AudioSegment
 from flask import Flask
 from telebot import types
 from storage import ShoppingList
-from categories import get_category
+from ai_wrapper import ai_provider
 from dotenv import load_dotenv
 
 # Загружаем переменные из .env
@@ -101,14 +101,22 @@ def handle_voice(message):
             
         bot.delete_message(message.chat.id, msg.message_id)
         
-        # Обрабатываем текст как обычное сообщение
+        # Обрабатываем текст через AI
         if text:
-            items = [i.strip() for i in text.split(',')]
-            for item in items:
-                category = get_category(item)
-                storage.add_item(item, category)
+            items_data = ai_provider.parse_items(text)
+            added_text = []
+            for item in items_data:
+                name = item.get('name', 'Неизвестно')
+                cat = item.get('category', '📦 Другое')
+                if storage.add_item(name, cat):
+                    added_text.append(f"• {name} ({cat})")
             
-            bot.send_message(message.chat.id, f"✅ Добавлено из голоса: {text}")
+            if added_text:
+                res_msg = "✅ Добавлено из голоса:\n" + "\n".join(added_text)
+                bot.send_message(message.chat.id, res_msg)
+            else:
+                bot.send_message(message.chat.id, "Все эти товары уже есть в списке!")
+            
             show_list(message)
             
     except Exception as e:
@@ -140,28 +148,24 @@ def handle_message(message):
         markup.add(*btns)
         bot.send_message(message.chat.id, "Часто добавляемые товары:", reply_markup=markup)
     else:
-        # Разбиваем сообщение по запятым и убираем лишние пробелы
-        items = [i.strip() for i in message.text.split(',') if i.strip()]
+        # Обработка сообщения через Gemini AI
+        msg_wait = bot.send_message(message.chat.id, "🤖 Думаю...")
+        items_data = ai_provider.parse_items(message.text)
+        bot.delete_message(message.chat.id, msg_wait.message_id)
         
-        if len(items) > 1:
-            added_count = 0
-            for item in items:
-                category = get_category(item)
-                if storage.add_item(item, category):
-                    added_count += 1
-            
-            if added_count > 0:
-                bot.send_message(message.chat.id, f"✅ Добавлено несколько товаров ({added_count})!")
-            else:
-                bot.send_message(message.chat.id, "Все эти товары уже есть в списке!")
+        added_text = []
+        for item in items_data:
+            name = item.get('name', 'Неизвестно')
+            cat = item.get('category', '📦 Другое')
+            if storage.add_item(name, cat):
+                added_text.append(f"• *{name}* ({cat})")
+        
+        if added_text:
+            res_msg = "✅ Добавлено:\n" + "\n".join(added_text)
+            bot.send_message(message.chat.id, res_msg, parse_mode="Markdown")
+            show_list(message)
         else:
-            # Одиночный товар
-            item = items[0]
-            category = get_category(item)
-            if storage.add_item(item, category):
-                bot.send_message(message.chat.id, f"✅ Добавлено: *{item}* ({category})", parse_mode="Markdown")
-            else:
-                bot.send_message(message.chat.id, "Этот товар уже есть в списке!")
+            bot.send_message(message.chat.id, "Эти товары уже есть в списке или я не нашел продуктов в сообщении. 🤔")
 
 def show_list(message):
     items = storage.items
@@ -212,13 +216,18 @@ def callback_inline(call):
             
     elif call.data.startswith('add_'):
         item = call.data.replace('add_', '')
-        category = get_category(item)
-        if storage.add_item(item, category):
-            bot.answer_callback_query(call.id, f"Добавлено: {item}")
-            # Не удаляем меню частого, просто даем фидбек
-            bot.send_message(call.message.chat.id, f"✅ Добавлено: {item}")
+        # Для быстрых кнопок используем AI для определения категории
+        items_data = ai_provider.parse_items(item)
+        if items_data:
+            name = items_data[0].get('name', item)
+            cat = items_data[0].get('category', '📦 Другое')
+            if storage.add_item(name, cat):
+                bot.answer_callback_query(call.id, f"Добавлено: {name}")
+                bot.send_message(call.message.chat.id, f"✅ Добавлено: {name} ({cat})")
+            else:
+                bot.answer_callback_query(call.id, "Уже в списке!")
         else:
-            bot.answer_callback_query(call.id, "Уже в списке!")
+            bot.answer_callback_query(call.id, "Ошибка AI")
 
 if __name__ == '__main__':
     # Запуск Flask в отдельном потоке
