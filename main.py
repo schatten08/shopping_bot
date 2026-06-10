@@ -103,7 +103,16 @@ def handle_voice(message):
         
         # Обрабатываем текст через AI
         if text:
-            items_data = ai_provider.parse_items(text)
+            res = ai_provider.parse_items(text)
+            
+            # Поддержка нового формата (словарь с советом или просто список)
+            if isinstance(res, dict):
+                items_data = res.get('items', [])
+                recipe_advice = res.get('recipe_advice')
+            else:
+                items_data = res
+                recipe_advice = None
+                
             added_text = []
             for item in items_data:
                 name = item.get('name', 'Неизвестно')
@@ -113,6 +122,8 @@ def handle_voice(message):
             
             if added_text:
                 res_msg = "✅ Добавлено из голоса:\n" + "\n".join(added_text)
+                if recipe_advice:
+                    res_msg += f"\n\n💡 {recipe_advice}"
                 bot.send_message(message.chat.id, res_msg)
             else:
                 bot.send_message(message.chat.id, "Все эти товары уже есть в списке!")
@@ -150,9 +161,17 @@ def handle_message(message):
     else:
         # Обработка сообщения через Gemini AI
         msg_wait = bot.send_message(message.chat.id, "🤖 Думаю...")
-        items_data = ai_provider.parse_items(message.text)
+        res = ai_provider.parse_items(message.text)
         bot.delete_message(message.chat.id, msg_wait.message_id)
         
+        # Поддержка нового формата (словарь с советом или просто список)
+        if isinstance(res, dict):
+            items_data = res.get('items', [])
+            recipe_advice = res.get('recipe_advice')
+        else:
+            items_data = res
+            recipe_advice = None
+            
         added_text = []
         for item in items_data:
             name = item.get('name', 'Неизвестно')
@@ -162,6 +181,8 @@ def handle_message(message):
         
         if added_text:
             res_msg = "✅ Добавлено:\n" + "\n".join(added_text)
+            if recipe_advice:
+                res_msg += f"\n\n💡 {recipe_advice}"
             bot.send_message(message.chat.id, res_msg, parse_mode="Markdown")
             show_list(message)
         else:
