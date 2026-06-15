@@ -38,8 +38,9 @@ ALLOWED_USERS = [int(id.strip()) for id in os.getenv('ALLOWED_USERS', '').split(
 def restricted(func):
     def wrapper(message, *args, **kwargs):
         user_id = message.from_user.id
+        print(f"DEBUG: Попытка доступа от ID {user_id}")
         if user_id not in ALLOWED_USERS:
-            print(f"Доступ запрещен для пользователя {user_id}")
+            print(f"DEBUG: Доступ запрещен для пользователя {user_id}. Разрешенные: {ALLOWED_USERS}")
             bot.send_message(message.chat.id, "Извините, у вас нет доступа к этому боту. 🔒")
             return
         return func(message, *args, **kwargs)

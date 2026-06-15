@@ -15,59 +15,63 @@ class ShoppingList:
             self.items = self._load_data_local()
 
     def _init_db(self):
-        conn = psycopg2.connect(self.db_url)
-        with conn.cursor() as cur:
-            # 1. Сначала просто создаем таблицы, если их нет
-            cur.execute("""
-                CREATE TABLE IF NOT EXISTS shopping_items (
-                    id SERIAL PRIMARY KEY,
-                    user_id BIGINT DEFAULT 0,
-                    name TEXT NOT NULL,
-                    category TEXT DEFAULT '📦 Другое'
-                )
-            """)
-            cur.execute("""
-                CREATE TABLE IF NOT EXISTS purchase_history (
-                    user_id BIGINT DEFAULT 0,
-                    name TEXT NOT NULL,
-                    category TEXT,
-                    count INTEGER DEFAULT 1
-                )
-            """)
-            
-            # 2. Аккуратно добавляем колонки и чистим дубликаты для уникальности
-            cur.execute("""
-                DO $$
-                BEGIN
-                    -- Добавляем колонку user_id, если её не было
-                    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='shopping_items' AND column_name='user_id') THEN
-                        ALTER TABLE shopping_items ADD COLUMN user_id BIGINT DEFAULT 0;
-                    END IF;
+        try:
+            conn = psycopg2.connect(self.db_url)
+            print("DEBUG: Успешное подключение к БД для инициализации")
+            with conn.cursor() as cur:
+                # 1. Сначала просто создаем таблицы, если их нет
+                cur.execute("""
+                    CREATE TABLE IF NOT EXISTS shopping_items (
+                        id SERIAL PRIMARY KEY,
+                        user_id BIGINT DEFAULT 0,
+                        name TEXT NOT NULL,
+                        category TEXT DEFAULT '📦 Другое'
+                    )
+                """)
+                cur.execute("""
+                    CREATE TABLE IF NOT EXISTS purchase_history (
+                        user_id BIGINT DEFAULT 0,
+                        name TEXT NOT NULL,
+                        category TEXT,
+                        count INTEGER DEFAULT 1
+                    )
+                """)
+                
+                # 2. Аккуратно добавляем колонки и чистим дубликаты для уникальности
+                cur.execute("""
+                    DO $$
+                    BEGIN
+                        -- Добавляем колонку user_id, если её не было
+                        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='shopping_items' AND column_name='user_id') THEN
+                            ALTER TABLE shopping_items ADD COLUMN user_id BIGINT DEFAULT 0;
+                        END IF;
 
-                    -- Чистим дубликаты перед созданием уникального ключа (оставляем только один ID для каждой пары user/name)
-                    DELETE FROM shopping_items a USING shopping_items b 
-                    WHERE a.id < b.id AND a.name = b.name AND a.user_id = b.user_id;
+                        -- Чистим дубликаты перед созданием уникального ключа
+                        DELETE FROM shopping_items a USING shopping_items b 
+                        WHERE a.id < b.id AND a.name = b.name AND a.user_id = b.user_id;
 
-                    -- Удаляем старые ключи и создаем правильный составной ключ
-                    ALTER TABLE shopping_items DROP CONSTRAINT IF EXISTS shopping_items_name_key;
-                    ALTER TABLE shopping_items DROP CONSTRAINT IF EXISTS shopping_items_user_name_key;
-                    ALTER TABLE shopping_items ADD CONSTRAINT shopping_items_user_name_key UNIQUE (user_id, name);
+                        -- Удаляем старые ключи и создаем правильный составной ключ
+                        ALTER TABLE shopping_items DROP CONSTRAINT IF EXISTS shopping_items_name_key;
+                        ALTER TABLE shopping_items DROP CONSTRAINT IF EXISTS shopping_items_user_name_key;
+                        ALTER TABLE shopping_items ADD CONSTRAINT shopping_items_user_name_key UNIQUE (user_id, name);
 
-                    -- То же самое для истории
-                    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='purchase_history' AND column_name='user_id') THEN
-                        ALTER TABLE purchase_history ADD COLUMN user_id BIGINT DEFAULT 0;
-                    END IF;
-                    
-                    -- У истории первичный ключ должен быть составным (user_id + name)
-                    ALTER TABLE purchase_history DROP CONSTRAINT IF EXISTS purchase_history_pkey;
-                    ALTER TABLE purchase_history ADD PRIMARY KEY (user_id, name);
-                EXCEPTION WHEN OTHERS THEN
-                    -- Если что-то пошло не так (например, ключ уже есть), просто идем дальше
-                    RAISE NOTICE 'Migration message: %', SQLERRM;
-                END $$;
-            """)
-        conn.commit()
-        conn.close()
+                        -- То же самое для истории
+                        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='purchase_history' AND column_name='user_id') THEN
+                            ALTER TABLE purchase_history ADD COLUMN user_id BIGINT DEFAULT 0;
+                        END IF;
+                        
+                        -- У истории первичный ключ должен быть составным
+                        ALTER TABLE purchase_history DROP CONSTRAINT IF EXISTS purchase_history_pkey;
+                        ALTER TABLE purchase_history ADD PRIMARY KEY (user_id, name);
+                    EXCEPTION WHEN OTHERS THEN
+                        RAISE NOTICE 'Migration message: %', SQLERRM;
+                    END $$;
+                """)
+            conn.commit()
+            conn.close()
+            print("DEBUG: Инициализация БД завершена успешно")
+        except Exception as e:
+            print(f"CRITICAL ERROR: Ошибка при инициализации БД: {e}")
 
     def _update_history(self, item_name, user_id=0):
         if not self.db_url: return
