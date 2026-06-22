@@ -39,14 +39,15 @@ storage = ShoppingList()
 # Список разрешенных пользователей (пробуем оба варианта)
 raw_users = os.getenv('ADMIN_ID') or os.getenv('ALLOWED_USERS', '')
 ALLOWED_USERS = [int(id.strip()) for id in raw_users.split(',') if id.strip()]
+print(f"DEBUG: Загружен список разрешенных ID: {ALLOWED_USERS}", flush=True)
 
 def restricted(func):
     def wrapper(message, *args, **kwargs):
         user_id = message.from_user.id
-        print(f"DEBUG: Попытка доступа от ID {user_id}")
+        print(f"DEBUG: Попытка доступа от ID {user_id}", flush=True)
         if user_id not in ALLOWED_USERS:
-            print(f"DEBUG: Доступ запрещен для пользователя {user_id}. Разрешенные: {ALLOWED_USERS}")
-            bot.send_message(message.chat.id, "Извините, у вас нет доступа к этому боту. 🔒")
+            print(f"DEBUG: Доступ запрещен для {user_id}. Список разрешенных: {ALLOWED_USERS}", flush=True)
+            bot.send_message(message.chat.id, f"Извините, у вас нет доступа. Ваш ID: {user_id} 🔒")
             return
         return func(message, *args, **kwargs)
     return wrapper
@@ -314,8 +315,8 @@ if __name__ == '__main__':
         types.BotCommand("help", "Помощь")
     ])
     
-    print("Бот запущен...")
+    print("Бот запущен...", flush=True)
     try:
         bot.polling(none_stop=True)
     except Exception as e:
-        print(f"Ошибка при работе бота: {e}")
+        print(f"Ошибка при работе бота: {e}", flush=True)
