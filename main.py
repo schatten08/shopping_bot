@@ -84,8 +84,9 @@ def handle_clear_command(message):
 @bot.message_handler(commands=['debug_logs'])
 @restricted
 def handle_debug_logs(message):
-    # Только для главного администратора (вас)
-    if message.from_user.id != 367218525:
+    # Только для главного администратора (первого в списке)
+    admin_id = ALLOWED_USERS[0] if ALLOWED_USERS else None
+    if message.from_user.id != admin_id:
         bot.send_message(message.chat.id, "У вас нет прав для просмотра системных логов. 🛡️")
         return
         
