@@ -12,9 +12,13 @@ from dotenv import load_dotenv
 # Загружаем переменные из .env
 load_dotenv()
 
-# Настройка пути к ffmpeg для Render
+# Настройка пути к ffmpeg
+# Для Docker/Ubuntu ffmpeg обычно в стандартном пути, но оставим гибкость
 if os.path.exists("/opt/render/project/src/ffmpeg_bin/ffmpeg"):
     AudioSegment.converter = "/opt/render/project/src/ffmpeg_bin/ffmpeg"
+else:
+    # По умолчанию ищем в системе
+    AudioSegment.converter = "ffmpeg"
 
 # Инициализация Flask для Render
 app = Flask(__name__)
