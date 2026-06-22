@@ -31,13 +31,14 @@ def run_flask():
     port = int(os.environ.get("PORT", 8080))
     app.run(host='0.0.0.0', port=port)
 
-# Получаем токен из переменной окружения
-API_TOKEN = os.getenv('API_TOKEN')
+# Получаем токен из переменной окружения (пробуем оба варианта)
+API_TOKEN = os.getenv('TELEGRAM_TOKEN') or os.getenv('API_TOKEN')
 bot = telebot.TeleBot(API_TOKEN)
 storage = ShoppingList()
 
-# Список разрешенных пользователей
-ALLOWED_USERS = [int(id.strip()) for id in os.getenv('ALLOWED_USERS', '').split(',') if id.strip()]
+# Список разрешенных пользователей (пробуем оба варианта)
+raw_users = os.getenv('ADMIN_ID') or os.getenv('ALLOWED_USERS', '')
+ALLOWED_USERS = [int(id.strip()) for id in raw_users.split(',') if id.strip()]
 
 def restricted(func):
     def wrapper(message, *args, **kwargs):
