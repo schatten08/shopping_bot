@@ -1,6 +1,9 @@
+import requests
 import telebot
 import os
 import threading
+import time
+import re
 import speech_recognition as sr
 from pydub import AudioSegment
 from flask import Flask
@@ -35,6 +38,25 @@ def run_flask():
 API_TOKEN = os.getenv('TELEGRAM_TOKEN') or os.getenv('API_TOKEN')
 bot = telebot.TeleBot(API_TOKEN)
 storage = ShoppingList()
+UPTIME_KUMA_PUSH_URL = os.getenv('UPTIME_KUMA_PUSH_URL')
+
+# --- Логика Heartbeat для мониторинга ---
+def heartbeat_loop():
+    if not UPTIME_KUMA_PUSH_URL:
+        print("DEBUG: UPTIME_KUMA_PUSH_URL не задан, мониторинг отключен.", flush=True)
+        return
+    
+    print(f"DEBUG: Запущен поток мониторинга Uptime Kuma: {UPTIME_KUMA_PUSH_URL}", flush=True)
+    while True:
+        try:
+            r = requests.get(UPTIME_KUMA_PUSH_URL, timeout=10)
+            # print(f"DEBUG: Heartbeat sent, status: {r.status_code}", flush=True)
+        except Exception as e:
+            print(f"DEBUG: Heartbeat error: {e}", flush=True)
+        time.sleep(50)
+
+# Запускаем поток мониторинга
+threading.Thread(target=heartbeat_loop, daemon=True).start()
 
 # Список разрешенных пользователей (пробуем оба варианта)
 raw_users = os.getenv('ADMIN_ID') or os.getenv('ALLOWED_USERS', '')
@@ -186,11 +208,48 @@ def handle_message(message):
         markup.add(*btns)
         bot.send_message(message.chat.id, "Часто добавляемые товары:", reply_markup=markup)
     else:
-        # Обработка сообщения через Gemini AI
-        msg_wait = bot.send_message(message.chat.id, "🤖 Думаю...")
+        # Прямое добавление без AI, если не запрошен рецепт
+        text_lower = message.text.lower()
+        if not any(word in text_lower for word in ["рецепт", "состав", "приготовить", "ингредиенты"]):
+            # Разбиваем по запятым или переносам строк, если пользователь прислал список
+            raw_items = []
+            if "," in message.text:
+                raw_items = [i.strip() for i in message.text.split(",") if i.strip()]
+            elif "\n" in message.text:
+                raw_items = [i.strip() for i in message.text.split("\n") if i.strip()]
+            else:
+                raw_items = [message.text.strip()]
+            
+            added_text = []
+            for item_name in raw_items:
+                # Очищаем от лишних символов (точки, дефисы в начале)
+                clean_name = re.sub(r'^[\-\*•\s\d\.\)]+', '', item_name).strip()
+                if clean_name:
+                    if storage.add_item(clean_name, "📦 Продукты", message.from_user.id):
+                        added_text.append(f"• *{clean_name}*")
+            
+            if added_text:
+                bot.send_message(message.chat.id, "✅ **Добавлено в список:**\n" + "\n".join(added_text), parse_mode="Markdown")
+                show_list(message)
+            return
+
+        # Обработка сообщения через Gemini AI (режим рецепта)
+        msg_wait = bot.send_message(message.chat.id, "🤖 Анализирую рецепт...")
         res = ai_provider.parse_items(message.text)
         bot.delete_message(message.chat.id, msg_wait.message_id)
         
+        # Режим страховки: если AI вернул ошибку 503 или пустой список на запрос рецепта
+        if isinstance(res, dict) and not res.get('items') and "503" in str(res.get('recipe_advice', '')):
+            fallback_item = f"Ингредиенты для: {message.text}"
+            if storage.add_item(fallback_item, "📋 Рецепты (ожидание ИИ)", message.from_user.id):
+                bot.send_message(
+                    message.chat.id, 
+                    f"⚠️ **Gemini перегружен**, но я сохранил ваш запрос:\n• *{fallback_item}*\n\nПопробуйте позже запросить рецепт еще раз. ⏳", 
+                    parse_mode="Markdown"
+                )
+                show_list(message)
+                return
+
         # Поддержка нового формата (словарь с советом или просто список)
         if isinstance(res, dict):
             items_data = res.get('items', [])

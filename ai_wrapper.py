@@ -19,50 +19,63 @@ class AIProvider:
         if not self.client:
             return {"items": [], "recipe_advice": None}
 
-        # Промпт стал максимально жестким в плане обязательств по наполнению "items"
+        # Промпт переработан: разделяем "просто покупку" от "рецепта"
         prompt = f"""
-        Ты — робот-составитель списков покупок. Твой ответ ВСЕГДА должен содержать список продуктов.
+        Ты — робот-составитель списков покупок.
         
-        ТВОЯ ЗАДАЧА:
-        1. Если запрос "продукты на [БЛЮДО]", ты ОБЯЗАН найти классический рецепт и выписать все основные ингредиенты в "items".
-           Пример запроса "продукты на оладьи":
-           "items": [
-               {{"name": "Кефир", "category": "🥛 Молочные продукты"}},
-               {{"name": "Мука", "category": "🥖 Бакалея"}},
-               {{"name": "Яйца", "category": "🥚 Прочее"}},
-               {{"name": "Сахар", "category": "🥖 Бакалея"}},
-               {{"name": "Растительное масло", "category": "🧴 Бакалея"}}
-           ]
-        2. Если в запросе уже есть список продуктов, просто разложи их по категориям.
-        3. "recipe_advice": напиши короткий совет (1-2 предложения) и дай ссылку на Google.
+        ТВОЯ ЛОГИКА:
+        1. Если в запросе есть слово "РЕЦЕПТ", "СОСТАВ" или явная просьба найти ингредиенты для блюда:
+           - Найди основные ингредиенты и добавь их в массив "items".
+           - В "recipe_advice" напиши краткий совет по приготовлению и ссылку на Google.
         
-        НИКОГДА не возвращай пустой список "items", если в запросе упоминается еда!
+        2. Если слова "рецепт/состав" НЕТ (например, "творожок клубничный", "пицца", "яблоки"):
+           - Просто добавь указанный текст как товар в массив "items". 
+           - Не выдумывай ингредиенты. Даже если написано "Пицца", просто добавь "Пицца" в категорию "Ready Meals".
+           - В "recipe_advice" верни null.
 
         ОТВЕТЬ В СТРОГОМ JSON:
         {{
             "items": [
                 {{"name": "Название", "category": "Категория с иконкой"}}
             ],
-            "recipe_advice": "Твой совет и ссылка"
+            "recipe_advice": "текст совета или null"
         }}
 
         Запрос пользователя: "{text}"
         """
         
         try:
-            response = self.client.models.generate_content(
-                model=self.model_id,
-                contents=prompt,
-                config={'response_mime_type': 'application/json'}
-            )
+            # Добавляем повторные попытки при 503 ошибке
+            max_retries = 3
+            last_error = None
             
-            print(f"DEBUG AI Response: {response.text}") # Видно в логах Render
-            data = json.loads(response.text.strip())
+            for attempt in range(max_retries):
+                try:
+                    response = self.client.models.generate_content(
+                        model=self.model_id,
+                        contents=prompt,
+                        config={'response_mime_type': 'application/json'}
+                    )
+                    
+                    print(f"DEBUG AI Response: {response.text}") # Видно в логах
+                    data = json.loads(response.text.strip())
+                    
+                    # Гарантируем наличие ключа items
+                    if "items" not in data:
+                        data["items"] = []
+                    return data
+                except Exception as e:
+                    last_error = e
+                    if "503" in str(e) or "Service Unavailable" in str(e):
+                        print(f"AI 503 Attempt {attempt + 1} failed, retrying in 2s...")
+                        import time
+                        time.sleep(2)
+                        continue
+                    raise e
             
-            # Гарантируем наличие ключа items
-            if "items" not in data:
-                data["items"] = []
-            return data
+            print(f"AI ERROR after {max_retries} attempts: {last_error}")
+            return {"items": [], "recipe_advice": "Gemini сейчас перегружен (503). Попробуйте позже или добавьте товар вручную."}
+            
         except Exception as e:
             print(f"AI ERROR: {e}")
             return {"items": [], "recipe_advice": "Произошла ошибка при связи с Gemini."}
