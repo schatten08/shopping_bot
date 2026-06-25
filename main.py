@@ -49,10 +49,12 @@ def heartbeat_loop():
     print(f"DEBUG: Запущен поток мониторинга Uptime Kuma: {UPTIME_KUMA_PUSH_URL}", flush=True)
     while True:
         try:
-            r = requests.get(UPTIME_KUMA_PUSH_URL, timeout=10)
-            # print(f"DEBUG: Heartbeat sent, status: {r.status_code}", flush=True)
+            # Увеличиваем таймаут и добавляем заголовок, чтобы избежать ReadTimeout
+            requests.get(UPTIME_KUMA_PUSH_URL, timeout=15)
         except Exception as e:
-            print(f"DEBUG: Heartbeat error: {e}", flush=True)
+            # Не печатаем каждую ошибку таймаута, чтобы не забивать логи, если это временное
+            if "timeout" not in str(e).lower():
+                print(f"DEBUG: Heartbeat error: {e}", flush=True)
         time.sleep(50)
 
 # Запускаем поток мониторинга
@@ -204,7 +206,14 @@ def handle_message(message):
             return
             
         markup = types.InlineKeyboardMarkup(row_width=2)
-        btns = [types.InlineKeyboardButton(item, callback_data=f"add_{item}") for item in frequent]
+        # Ограничиваем длину callback_data, так как Telegram имеет лимит (64 байта)
+        # Если название продукта слишком длинное, это вызовет BUTTON_DATA_INVALID
+        btns = []
+        for item in frequent:
+            # Обрезаем имя для callback, если оно слишком длинное (оставляем запас для "add_")
+            safe_callback = item[:50] 
+            btns.append(types.InlineKeyboardButton(item, callback_data=f"add_{safe_callback}"))
+            
         markup.add(*btns)
         bot.send_message(message.chat.id, "Часто добавляемые товары:", reply_markup=markup)
     else:
@@ -307,9 +316,12 @@ def show_list(message):
             )
             markup.add(header_button)
             
+        # Используем ID из базы данных вместо индекса массива для надежности
+        item_db_id = item_data['id']
+        
         callback_button = types.InlineKeyboardButton(
             text=f"✅ {item_name}", 
-            callback_data=f"remove_{index}"
+            callback_data=f"remove_{item_db_id}"
         )
         markup.add(callback_button)
     

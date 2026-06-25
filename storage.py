@@ -147,19 +147,25 @@ class ShoppingList:
                 return True
             return False
 
-    def remove_item(self, index, user_id=0):
-        items = self.get_items(user_id) # На этом этапе items - это список словарей
-        if 0 <= index < len(items):
-            item_name = items[index]['name']
-            if self.db_url:
-                conn = psycopg2.connect(self.db_url)
-                with conn.cursor() as cur:
-                    cur.execute("DELETE FROM shopping_items WHERE name = %s AND user_id = %s", (item_name, user_id))
-                conn.commit()
-                conn.close()
-                return item_name
-            else:
-                removed = self._items_local.pop(index)
+    def remove_item(self, item_id, user_id=0):
+        if self.db_url:
+            conn = psycopg2.connect(self.db_url)
+            item_name = None
+            with conn.cursor() as cur:
+                # Сначала получаем имя для логов/ответа
+                cur.execute("SELECT name FROM shopping_items WHERE id = %s AND user_id = %s", (item_id, user_id))
+                row = cur.fetchone()
+                if row:
+                    item_name = row[0]
+                    cur.execute("DELETE FROM shopping_items WHERE id = %s", (item_id,))
+                    self._update_history(item_name, user_id)
+            conn.commit()
+            conn.close()
+            return item_name
+        else:
+            # Локальный режим (fallback) - здесь item_id это индекс
+            if 0 <= item_id < len(self._items_local):
+                removed = self._items_local.pop(item_id)
                 self.save_data_local()
                 return removed['name']
         return None
